@@ -1,17 +1,16 @@
 from __future__ import print_function, division
 from copy import copy
-from collections import OrderedDict
-from random import random
+
 import numpy as np
 
-# rotation map to record sensor data.
-DIRECTIONS = OrderedDict([
-    ('up', [1, 0]),
-    ('right', [0, 1]),
-    ('down', [-1, 0]),
-    ('left', [0, -1]),
-])
-rotations = {'up': 0, 'right': 1, 'down': 2, 'left': 3}
+from utils import DIRECTIONS, rotations
+from utils import ifb, bfi, rol
+from utils import get_updated_location
+from utils import is_prev_open
+from utils import rotation_from_direction
+from utils import direction_from_rotation
+
+from heuristics import RandomHeuristic
 
 
 class Robot(object):
@@ -36,7 +35,8 @@ class Robot(object):
         # is the previous square open?
         self.prev_open = 0
         # heuristic function we use to weight possible moves in mapping
-        self.mapping_heuristic = 'a_star'
+        self.mapping_heuristic = RandomHeuristic(self)
+        print("Using heuristic {}".format(self.mapping_heuristic))
         # step counter
         self.step = 0
         # maximum steps used to map
@@ -117,21 +117,10 @@ class Robot(object):
         if len(open_states) == 0:
             # we've reached a dead end!!
             rotation, movement = 90, 0
-        elif len(open_states) > 1:
-            for st in open_states:
-                loc = get_updated_location(st[0], self.location)
-                try:
-                    heuristic = self.get_heuristic(loc, len(open_states))
-                except IndexError as e:
-                    import ipdb; ipdb.set_trace()
-                st.append(heuristic)
-
-            direction, heuristic = sorted(open_states, key=lambda x: x[1],
-                                          reverse=True)[0]
-            print("Best heuristic out of {} choices: {}".format(
-                len(open_states), heuristic))
         else:
-            direction = open_states[0][0]
+            # note, even if there is only one open state the
+            # heuristic algorithm may want to turn around
+            direction = self.mapping_heuristic.get_move(open_states)
 
         rotation = rotation_from_direction(self.heading, direction)
 
@@ -139,6 +128,7 @@ class Robot(object):
             # can't turn 180 degrees, must do it in steps
             rotation, movement = 90, 0
 
+        # only ever get the next 
         if rotation > 0:
             movement = 0
         else:
@@ -164,102 +154,10 @@ class Robot(object):
         print("Moving: {} Rotating: {}. New Location: {}. Heading {}".format(
             movement, rotation, self.location, self.heading))
 
-    def get_heuristic(self, location, num_states):
-        if self.mapping_heuristic == 'random':
-            return random_heuristic(location, num_states, self._map)
-        else:
-            return a_star_heuristic(location, self.maze_dim)
-
     def in_goal(self):
         d = self.maze_dim // 2
         return d - 1 <= self.location[0] <= d and \
             d - 1 <= self.location[1] <= d
-
-
-def is_prev_open(current, rotation, movement, heading):
-    """Check to see if the direction behind the robot is open,
-    i.e. does not have a wall"""
-    dirs = DIRECTIONS.keys()
-    direction = direction_from_rotation(heading, rotation)
-    prev_open = bfi(current)[(dirs.index(direction) - 2) % len(dirs)]
-    if movement == 0:
-        # is backward direction open?
-        return prev_open
-    else:
-        # is forward direction open or, if we can't move
-        # just use prev_open
-        return bfi(current)[(dirs.index(direction))] or prev_open
-
-
-def random_heuristic(loc, num_states, maze, weight=5):
-    """Randomly provide a heuristic for a node.
-    Weight is the multiplier for preference if that node
-    has not yet been explored."""
-    # prefer unexplored states
-    mult = weight * (maze[loc[0], loc[1]] == 0) + 1
-    return random() / num_states * (mult)
-
-
-def a_star_heuristic(loc, dim):
-    """Get an optimistic prediction to the goal"""
-    [x, y] = loc
-    # to account for the 2x2 goal in the center
-    x_dim = dim // 2 - 1 if x < dim // 2 else dim //2
-    y_dim = dim // 2 - 1 if y < dim // 2 else dim //2
-    return abs(x - x_dim) + abs(y - y_dim)
-
-
-def direction_from_rotation(heading, rotation):
-    dirs = DIRECTIONS.keys()
-    idx = int(dirs.index(heading) + rotation / 90) % len(dirs)
-    return dirs[idx]
-
-
-def rotation_from_direction(heading, direction):
-    if heading == direction:
-        return 0
-    ds = {
-        ('up', 'right'): 90,
-        ('up', 'left'): -90,
-        ('up', 'down'): 180,
-        ('right', 'down'): 90,
-        ('right', 'up'): -90,
-        ('right', 'left'): 180,
-        ('down', 'left'): 90,
-        ('down', 'right'): -90,
-        ('down', 'up'): 180,
-        ('left', 'up'): 90,
-        ('left', 'down'): -90,
-        ('left', 'right'): 180,
-    }
-    return ds[(heading, direction)]
-
-
-def get_updated_location(direction, location, movement=1):
-    return list(np.array(location) + movement * np.array(DIRECTIONS[direction]))
-
-
-def ifb(N, E, S, W):
-    """int from bits
-    Each value of N, E, S, W should be 0 if there is no wall,
-    and 1 if there is a wall in that direction."""
-    return (N * 1 + E * 2 + S * 4 + W * 8)
-
-def bfi(n): 
-    """bits from int"""
-    return tuple((1 & int(n) >> i) for i in range(4))
-
-""" Bit rotation. Taken from [0].
-[0]: http://www.falatic.com/index.php/108/python-and-bitwise-rotation
-"""
-
-rol = lambda val, r_bits: \
-    (val << r_bits%4) & (2**4-1) | \
-    ((val & (2**4-1)) >> (4-(r_bits%4)))
-
-ror = lambda val, r_bits: \
-    ((val & (2**4-1)) >> r_bits%4) | \
-    (val << (4-(r_bits%4)) & (2**4-1))
 
 
 if __name__ == "__main__":
