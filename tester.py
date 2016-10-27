@@ -1,3 +1,4 @@
+from __future__ import division
 from maze import Maze
 from robot import Robot
 import sys
@@ -99,6 +100,10 @@ if __name__ == '__main__':
                     else:
                         print "Movement stopped by wall."
                         movement = 0
+            # TODO: remove
+            if not (robot_pos['location'][0] == testrobot.location[1] or
+                    robot_pos['location'][1] == testrobot.location[0]):
+                import ipdb; ipdb.set_trace()
 
             # check for goal entered
             goal_bounds = [testmaze.dim/2 - 1, testmaze.dim/2]
@@ -112,3 +117,4 @@ if __name__ == '__main__':
     # Report score if robot is successful.
     if len(runtimes) == 2:
         print "Task complete! Score: {:4.3f}".format(runtimes[1] + train_score_mult*runtimes[0])
+    

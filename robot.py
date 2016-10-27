@@ -10,7 +10,7 @@ from utils import is_prev_open
 from utils import rotation_from_direction
 from utils import direction_from_rotation
 
-from heuristics import RandomHeuristic
+from heuristics import Random, AStar
 
 
 class Robot(object):
@@ -35,12 +35,13 @@ class Robot(object):
         # is the previous square open?
         self.prev_open = 0
         # heuristic function we use to weight possible moves in mapping
-        self.mapping_heuristic = RandomHeuristic(self)
+        self.mapping_heuristic = AStar(self)
         print("Using heuristic {}".format(self.mapping_heuristic))
         # step counter
         self.step = 0
         # maximum steps used to map
         self.STEP_LIMIT = 900
+        self.moves = []
 
     def next_move(self, sensors):
         '''
@@ -68,33 +69,37 @@ class Robot(object):
         rotation = 0
         movement = 0
 
-        if self.mapping:
-            # TODO: this is too naive. lets use the previously
-            # explored square if possible
+        state = self._map[self.location[0], self.location[1]]
+        if state != 0:
+            global_state = state
+        else:
             S = self.prev_open
             W, N, E = np.array(sensors) > 0
-            state = ifb(N, E, S, W)
-            global_state = rol(copy(state), rotations[self.heading])
+            # adjust the state based on heading direction
+            global_state = rol(ifb(N, E, S, W), rotations[self.heading])
+
+        if self.mapping and not state:
             self.record_state(self.location, global_state)
 
-            if np.all(self._map > 0) or self.step > self.STEP_LIMIT:
-                if self.in_goal():
-                    self.mapping = False
-                    return "Reset", "Reset"
-                else:
-                    # move towards goal given our map knowledge
-                    import ipdb; ipdb.set_trace()
-            else:
-                rotation, movement = self.get_next_mapping_move(bfi(global_state))
+        if self.in_goal():
+            self.location = [0, 0]
+            self.mapping = False
+            return "Reset", "Reset"
 
-        else:
-            # map should be complete. run fastest route
+        if np.all(self._map > 0) or self.step > self.STEP_LIMIT:
             pass
+            # move towards goal given our map knowledge
+
+        if self.mapping:
+            rotation, movement = self.get_next_mapping_move(bfi(global_state))
+        else:
+            import ipdb; ipdb.set_trace()
 
         self.update_location(rotation, movement)
 
         # if self._map[self.location[0], self.location[1]] == 0:
         # print("new location!")
+        self.moves.append([rotation, movement])
 
         return rotation, movement
 
@@ -114,25 +119,19 @@ class Robot(object):
         for direction, state in zip(DIRECTIONS.keys(), global_state):
             if state > 0:
                 open_states.append([direction])
-        if len(open_states) == 0:
-            # we've reached a dead end!!
-            rotation, movement = 90, 0
-        else:
-            # note, even if there is only one open state the
-            # heuristic algorithm may want to turn around
-            direction = self.mapping_heuristic.get_move(open_states)
+
+        movement = 1
+
+        # always call the heuristic function!
+        # some heuristics (A*) need to keep track of state
+        direction = self.mapping_heuristic.get_move(open_states)
 
         rotation = rotation_from_direction(self.heading, direction)
 
         if rotation == 180:
-            # can't turn 180 degrees, must do it in steps
-            rotation, movement = 90, 0
-
-        # only ever get the next 
-        if rotation > 0:
+            # no reverse movement to keep it simple
+            rotation = 90
             movement = 0
-        else:
-            movement = 1
 
         # calculate whether the next position will be open
         # get the next location given direction, and movement
@@ -155,31 +154,6 @@ class Robot(object):
             movement, rotation, self.location, self.heading))
 
     def in_goal(self):
-        d = self.maze_dim // 2
-        return d - 1 <= self.location[0] <= d and \
-            d - 1 <= self.location[1] <= d
-
-
-if __name__ == "__main__":
-    # test helper functions
-    assert ifb(*bfi(10)) == 10
-    assert rol(ror(10, 1), 1) == 10
-    assert rol(10, 0) == 10
-    assert rotation_from_direction('up', 'down') == 180
-    assert rotation_from_direction('down', 'left') == 90
-    assert rotation_from_direction('right', 'up') == -90
-    assert rotation_from_direction('down', 'up') == 180 
-    assert rotation_from_direction('right', 'left') == 180 
-    assert rotation_from_direction('left', 'up') == 90
-    assert direction_from_rotation('up', 90) == 'right'
-    assert direction_from_rotation('down', -90) == 'right'
-    assert direction_from_rotation('left', -90) == 'down'
-    assert direction_from_rotation('left', 90) == 'up'
-    assert direction_from_rotation('left', 180) == 'right'
-    assert is_prev_open(9, 90, 0, 'up')
-    assert not is_prev_open(1, 0, 0, 'up')
-    assert is_prev_open(1, 0, 1, 'up')
-    assert not is_prev_open(1, 90, 0, 'up')
-    assert is_prev_open(1, 0, 0, 'down')
-    assert not is_prev_open(14, 90, 0, 'right')
-    print("All tests passed!")
+        loc = self.location
+        bounds = [self.maze_dim / 2 - 1, self.maze_dim / 2]
+        return loc[0] in bounds and loc[1] in bounds
