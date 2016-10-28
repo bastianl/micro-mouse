@@ -9,6 +9,7 @@ from utils import direction_to_square
 from utils import path_to_point
 from utils import direction_from_rotation
 from utils import rotation_from_direction
+from utils import path_from_g_values
 
 
 class BaseHeuristic(object):
@@ -88,10 +89,7 @@ class AStar(BaseHeuristic):
         states = []
         for st in open_states:
             loc = get_updated_location(st[0], robot.location)
-            try:
-                states.append(self.heuristic(st[0], loc))
-            except IndexError as e:
-                import ipdb; ipdb.set_trace()
+            states.append(self.heuristic(st[0], loc))
 
         robot = self.robot
         # remove moves we have already been to in open states
@@ -113,13 +111,11 @@ class AStar(BaseHeuristic):
             print("Stuck, reseting to {}".format(next_square))
             path = path_to_point(robot._map, robot.location, next_square)
             reset = dict(path=path)
-            import ipdb; ipdb.set_trace()
 
         if reset and len(reset['path']) == 0:
             # if we made it to reset point
             reset = dict()
             print("Made it to reset point!")
-            import ipdb; ipdb.set_trace()
 
         if reset:
             next_square = reset['path'].pop()
@@ -176,16 +172,25 @@ class AStar(BaseHeuristic):
         open_list = []
         for i in range(len(maze)):
             for j in range(len(maze)):
-                val = maze[i, j]
                 g_val = self.g_values[i, j]
-                if val == 0 and g_val > 0:
-                    open_list.append([(i, j), dist(loc, [i, j])])
+                if maze[i, j] == 0 and g_val > 0:
+                    state = self.heuristic(dist([i, j], loc), [i, j])
+                    open_list.append(state)
         # return the closest unexplored square
+        def best(state):
+            return state.f_value
+            # return float(state.f_value) / 10.0 + state.direction
         return sorted(open_list, 
-            key=lambda x: x[1])[0][0]
+            key=best)[0].location
+
+    def get_best_path(self, point_b):
+        return path_from_g_values(self.robot._map, self.g_values, 
+                                  [0, 0], point_b)
 
 
 class AStarState(object):
+    """Helper object to wrap a location and its corresponding
+    h, g, and f values for A*"""
 
     def __init__(self, direction, location, h_value, g_value):
         self.direction = direction

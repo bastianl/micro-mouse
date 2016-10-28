@@ -9,6 +9,7 @@ from utils import get_updated_location
 from utils import is_prev_open
 from utils import rotation_from_direction
 from utils import direction_from_rotation
+from utils import direction_to_square
 
 from heuristics import Random, AStar
 
@@ -35,8 +36,8 @@ class Robot(object):
         # is the previous square open?
         self.prev_open = 0
         # heuristic function we use to weight possible moves in mapping
-        self.mapping_heuristic = AStar(self)
-        print("Using heuristic {}".format(self.mapping_heuristic))
+        self.heuristic = AStar(self)
+        print("Using heuristic {}".format(self.heuristic))
         # step counter
         self.step = 0
         # maximum steps used to map
@@ -81,25 +82,34 @@ class Robot(object):
         if self.mapping and not state:
             self.record_state(self.location, global_state)
 
-        if self.in_goal():
-            self.location = [0, 0]
-            self.mapping = False
-            return "Reset", "Reset"
-
-        if np.all(self._map > 0) or self.step > self.STEP_LIMIT:
-            pass
-            # move towards goal given our map knowledge
-
         if self.mapping:
+            if self.in_goal():
+                self.goal_location = self.location
+                self.location = [0, 0]
+                self.heading = 'up'
+                self.mapping = False
+                self.path_to_goal = self.heuristic.get_best_path(self.goal_location)
+                return "Reset", "Reset"
+
             rotation, movement = self.get_next_mapping_move(bfi(global_state))
-        else:
-            import ipdb; ipdb.set_trace()
+        else: 
+            path = self.path_to_goal
+            target = path.pop()
+            direction = direction_to_square(target, self.location)
+            rotation = rotation_from_direction(self.heading, direction)
+            movement = 1
+            while len(path) > 0 and direction_to_square(path[-1], target) == direction \
+                    and movement < 3:
+                target = path.pop()
+                movement += 1
+
+        old_loc = copy(self.location)
 
         self.update_location(rotation, movement)
 
         # if self._map[self.location[0], self.location[1]] == 0:
         # print("new location!")
-        self.moves.append([rotation, movement])
+        self.moves.append([old_loc, self.location, rotation, movement])
 
         return rotation, movement
 
@@ -107,6 +117,7 @@ class Robot(object):
         """Record the state at a given location."""
         assert isinstance(state, int)
         loc = list(location)
+
         # loc[0] = (self.maze_dim - 1) - loc[0]
         if self._map[loc[0], loc[1]] == 0:
             # only update state if we haven't been there!
@@ -124,7 +135,7 @@ class Robot(object):
 
         # always call the heuristic function!
         # some heuristics (A*) need to keep track of state
-        direction = self.mapping_heuristic.get_move(open_states)
+        direction = self.heuristic.get_move(open_states)
 
         rotation = rotation_from_direction(self.heading, direction)
 

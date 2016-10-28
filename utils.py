@@ -20,6 +20,7 @@ def path_to_point(maze, point_a, point_b):
     can only expand on place at a time.
     Note: Path does not return point_a, but it does return point_b as
     first point. Get the next point by calling path.pop(), or path[-1]."""
+    maze = maze.copy()
     def not_in(loc, square_list):
         return all([dist(loc, x[0]) > 0 for x in square_list])
     dim = len(maze)
@@ -56,10 +57,19 @@ def path_to_point(maze, point_a, point_b):
             idx = DIRECTIONS.keys().index(direction)
             loc = target[0]
             reachable = bfi(maze[loc[0], loc[1]])[idx]
-
     # last location will still be set from distance block above
+    g_values[point_b[0], point_b[1]] = g_value + 1
+    # instead of this path "hack", we could also modify the state of the 
+    # map copy to be accurate in terms of what squares the last point
+    # can be accessed from, so the below algo works correctly.
     path = [point_b, loc]
-    # TODO: seperate this into a seperate function.
+
+    return path_from_g_values(maze, g_values, point_a, point_b, path=path)
+
+
+def path_from_g_values(maze, g_values, point_a, point_b, path=None):
+    path = path or [point_b]
+
     while True:
         loc = path[-1]
         if g_values[loc[0], loc[1]] == 1:
@@ -71,10 +81,10 @@ def path_to_point(maze, point_a, point_b):
         open_squares = []
         for idx, state in enumerate(states):
             if state:
-                loc = get_updated_location(DIRECTIONS.keys()[idx], loc)
-                g_value = g_values[loc[0], loc[1]]
+                p = get_updated_location(DIRECTIONS.keys()[idx], loc)
+                g_value = g_values[p[0], p[1]]
                 if g_value > 0:
-                    open_squares.append([loc, g_value])
+                    open_squares.append([p, g_value])
         open_squares = sorted(open_squares, key=lambda x: x[1], reverse=True)
         path.append(open_squares.pop()[0])
     return path

@@ -101,9 +101,8 @@ if __name__ == '__main__':
                         print "Movement stopped by wall."
                         movement = 0
             # TODO: remove
-            if not (robot_pos['location'][0] == testrobot.location[1] or
-                    robot_pos['location'][1] == testrobot.location[0]):
-                import ipdb; ipdb.set_trace()
+            # if (robot_pos['location'][0] != testrobot.location[1] or
+            # robot_pos['location'][1] != testrobot.location[0]):
 
             # check for goal entered
             goal_bounds = [testmaze.dim/2 - 1, testmaze.dim/2]
