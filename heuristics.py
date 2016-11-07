@@ -14,6 +14,7 @@ from utils import path_to_point
 from utils import direction_from_rotation
 from utils import rotation_from_direction
 from utils import path_from_g_values
+from utils import in_goal
 
 
 class BaseHeuristic(object):
@@ -173,6 +174,7 @@ class AStar(BaseHeuristic):
                 self.g_values[loc[0], loc[1]] = g_val
 
     def best_unexplored_square(self):
+        dim = self.robot.maze_dim
         maze = self.robot._map
         loc = self.robot.location
         open_list = []
@@ -184,14 +186,7 @@ class AStar(BaseHeuristic):
                                            distance=dist([i, j], loc))
                     open_list.append(state)
 
-        def should_be_explored(x):
-            """Decide if a square should be explored or not,
-            based on whether it is surrounded by any other
-            open squares. We want to prevent the heuristic
-            from picking squares in pockets of explored space,
-            whether those are against a wall, or just surrounded
-            by spaces we have already visited."""
-            loc = np.array(x.location)
+        def open_squares(loc, maze):
             values = []
             for v in DIRECTIONS.values():
                 d = loc + np.array(v)
@@ -199,15 +194,41 @@ class AStar(BaseHeuristic):
                 # a space we have already visited.
                 if np.any(d >= len(maze)) or maze[d[0], d[1]] > 0:
                     values.append(d)
-            return len(values) <  len(DIRECTIONS.keys())
+            return values
 
-        filt_open_list = list(filter(should_be_explored, open_list))
+        def is_cut_off(state):
+            """Use the expansion method to see if we can
+            reach the goal from this square or not. If not, 
+            return False so we don't continue to attempt
+            exploring this area."""
+
+            open_list = [state.location]
+            closed_list = []
+
+            while len(open_list) > 0:
+                loc = open_list.pop()
+                closed_list.append(loc)
+
+                if in_goal(loc, dim):
+                    return True
+
+                for v in DIRECTIONS.values():
+                    d = loc + np.array(v)
+                    # criterium for a closed direction, or
+                    # a space we have already visited.
+                    if np.all(d > 0) and np.all(d < len(maze)) and maze[d[0], d[1]] == 0 \
+                            and not any(dist(d, z) == 0 for z in closed_list):
+                        open_list.append(d)
+
+            return False
+
+        filt_open_list = list(filter(is_cut_off, open_list))
 
         # return the closest unexplored square
         def best(state):
             # return state.f_value
             # return state.f_value / 10.0 + state.distance
-            return state.g_value / 5.0 + state.distance
+            return state.f_value / 10.0 + state.distance
 
             # return float(state.f_value) / 10.0 + state.distance
         return sorted(filt_open_list, 

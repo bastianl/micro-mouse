@@ -11,6 +11,7 @@ from utils import is_prev_open
 from utils import rotation_from_direction
 from utils import direction_from_rotation
 from utils import direction_to_square
+from utils import in_goal
 
 from heuristics import Random, AStar
 
@@ -85,7 +86,7 @@ class Robot(object):
             self.record_state(self.location, global_state)
 
         if self.mapping:
-            if self.in_goal():
+            if in_goal(self.location, self.maze_dim):
                 self.goal_location = self.location
                 self.location = [0, 0]
                 self.heading = 'up'
@@ -165,8 +166,3 @@ class Robot(object):
 
         logging.debug("Moving: {} Rotating: {}. New Location: {}. Heading {}".format(
             movement, rotation, self.location, self.heading))
-
-    def in_goal(self):
-        loc = self.location
-        bounds = [self.maze_dim / 2 - 1, self.maze_dim / 2]
-        return loc[0] in bounds and loc[1] in bounds

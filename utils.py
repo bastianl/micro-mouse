@@ -134,6 +134,11 @@ def rotation_from_direction(heading, direction):
     return angle
 
 
+def in_goal(loc, dim):
+    bounds = [dim / 2 - 1, dim / 2]
+    return loc[0] in bounds and loc[1] in bounds
+
+
 def get_updated_location(direction, location, movement=1):
     """New location, after movement in a direction."""
     return list(np.array(location) + movement * np.array(DIRECTIONS[direction]))
