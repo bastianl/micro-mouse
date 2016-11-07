@@ -1,6 +1,7 @@
 from __future__ import print_function, division
 
 from random import random
+import logging
 from operator import itemgetter
 
 import numpy as np
@@ -44,11 +45,11 @@ class BaseHeuristic(object):
                       reverse=True)
         if len(vals) == 0:
             # we've reached a dead end!!
-            print("Dead end! {}".format(self.robot.location))
+            logging.debug("Dead end! {}".format(self.robot.location))
             return direction_from_rotation(self.robot.heading, 90)
 
         direction, heuristic = vals[0]
-        print("Best heuristic out of {} choices: {}".format(
+        logging.debug("Best heuristic out of {} choices: {}".format(
             len(open_states), heuristic))
         return direction
 
@@ -111,14 +112,14 @@ class AStar(BaseHeuristic):
         if not reset and len(states) == 0:
             # no unexplored squares.
             next_square = self.best_unexplored_square()
-            print("Stuck, reseting to {}".format(next_square))
+            logging.debug("Stuck, reseting to {}".format(next_square))
             path = path_to_point(robot._map, robot.location, next_square)
             reset = dict(path=path)
 
         if reset and len(reset['path']) == 0:
             # if we made it to reset point
             reset = dict()
-            print("Made it to reset point!")
+            logging.debug("Made it to reset point!")
 
         if reset:
             next_square = reset['path'].pop()
@@ -134,7 +135,7 @@ class AStar(BaseHeuristic):
                 direction = direction_from_rotation(robot.heading, 180)
             else:
                 direction, heuristic = states[0].direction, states[0].f_value
-                print("Best heuristic out of {} choices: {}".format(
+                logging.debug("Best heuristic out of {} choices: {}".format(
                     len(states), heuristic))
                 # some heuristics keep track of state
                 self.record_move(direction, states)
@@ -183,23 +184,31 @@ class AStar(BaseHeuristic):
                                            distance=dist([i, j], loc))
                     open_list.append(state)
 
-        def is_not_dead_end(x):
-            # filter out potential deadends
-            # if all squares around a square have been
-            # explored, we aren't interested.
+        def should_be_explored(x):
+            """Decide if a square should be explored or not,
+            based on whether it is surrounded by any other
+            open squares. We want to prevent the heuristic
+            from picking squares in pockets of explored space,
+            whether those are against a wall, or just surrounded
+            by spaces we have already visited."""
             loc = np.array(x.location)
             values = []
             for v in DIRECTIONS.values():
                 d = loc + np.array(v)
+                # criterium for a closed direction, or
+                # a space we have already visited.
                 if np.any(d >= len(maze)) or maze[d[0], d[1]] > 0:
                     values.append(d)
-            return len(values) > 0 
+            return len(values) <  len(DIRECTIONS.keys())
 
-        filt_open_list = list(filter(is_not_dead_end, open_list))
+        filt_open_list = list(filter(should_be_explored, open_list))
+
         # return the closest unexplored square
         def best(state):
             # return state.f_value
-            return state.f_value / 10.0 + state.distance
+            # return state.f_value / 10.0 + state.distance
+            return state.g_value / 5.0 + state.distance
+
             # return float(state.f_value) / 10.0 + state.distance
         return sorted(filt_open_list, 
             key=best)[0].location

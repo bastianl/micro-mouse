@@ -1,5 +1,6 @@
 from __future__ import print_function, division
 from copy import copy
+import logging
 
 import numpy as np
 
@@ -15,6 +16,7 @@ from heuristics import Random, AStar
 
 
 class Robot(object):
+
     def __init__(self, maze_dim):
         '''
         Use the initialization function to set up attributes that your robot
@@ -37,7 +39,7 @@ class Robot(object):
         self.prev_open = 0
         # heuristic function we use to weight possible moves in mapping
         self.heuristic = AStar(self)
-        print("Using heuristic {}".format(self.heuristic))
+        logging.debug("Using heuristic {}".format(self.heuristic))
         # step counter
         self.step = 0
         # maximum steps used to map
@@ -108,7 +110,7 @@ class Robot(object):
         self.update_location(rotation, movement)
 
         # if self._map[self.location[0], self.location[1]] == 0:
-        # print("new location!")
+        # logging.debug("new location!")
         self.moves.append([old_loc, self.location, rotation, movement])
 
         return rotation, movement
@@ -122,7 +124,7 @@ class Robot(object):
         if self._map[loc[0], loc[1]] == 0:
             # only update state if we haven't been there!
             # this allows us to turn freely
-            print("Recording state for {}: {}".format(loc, state))
+            logging.debug("Recording state for {}: {}".format(loc, state))
             self._map[loc[0], loc[1]] = state
 
     def get_next_mapping_move(self, global_state):
@@ -148,7 +150,7 @@ class Robot(object):
         # get the next location given direction, and movement
         current = self._map[self.location[0], self.location[1]]
         self.prev_open = is_prev_open(current, rotation, movement, self.heading)
-        print("Prev open: {}".format(self.prev_open))
+        logging.debug("Prev open: {}".format(self.prev_open))
 
         return rotation, movement
 
@@ -161,7 +163,7 @@ class Robot(object):
         self.location = get_updated_location(direction, self.location, movement)
         self.heading = direction
 
-        print("Moving: {} Rotating: {}. New Location: {}. Heading {}".format(
+        logging.debug("Moving: {} Rotating: {}. New Location: {}. Heading {}".format(
             movement, rotation, self.location, self.heading))
 
     def in_goal(self):
