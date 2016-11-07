@@ -3,6 +3,9 @@ from __future__ import print_function, division
 from random import random
 from operator import itemgetter
 
+import numpy as np
+
+from utils import DIRECTIONS
 from utils import get_updated_location
 from utils import bfi, dist
 from utils import direction_to_square
@@ -25,7 +28,7 @@ class BaseHeuristic(object):
         for st in open_states:
             loc = get_updated_location(st[0], robot.location)
             try:
-                heuristic = self.heuristic(loc, open_states)
+                heuristic = self.heuristic(loc)
             except IndexError as e:
                 import ipdb; ipdb.set_trace()
             st.append(heuristic)
@@ -89,7 +92,7 @@ class AStar(BaseHeuristic):
         states = []
         for st in open_states:
             loc = get_updated_location(st[0], robot.location)
-            states.append(self.heuristic(st[0], loc))
+            states.append(self.heuristic(loc, direction=st[0]))
 
         robot = self.robot
         # remove moves we have already been to in open states
@@ -140,7 +143,7 @@ class AStar(BaseHeuristic):
 
         return direction
 
-    def heuristic(self, direction, loc):
+    def heuristic(self, loc, direction=None, distance=None):
         """Get an optimistic prediction to the goal"""
         dim = self.robot.maze_dim
         [x, y] = loc
@@ -149,17 +152,19 @@ class AStar(BaseHeuristic):
         y_dim = dim // 2 - 1 if y < dim // 2 else dim //2
         h_value = dist([x, y], [x_dim, y_dim])
         g_value = self.g_values[loc[0], loc[1]]
-        return AStarState(direction=direction,
-                          location=loc, 
-                          g_value=g_value, 
-                          h_value=h_value)
+        return _AStarState(direction=direction,
+                           distance=distance,
+                           location=loc, 
+                           g_value=g_value, 
+                           h_value=h_value)
 
     def record_move(self, move, open_states):
         # A* expansion step: record g-values
         loc = self.robot.location
         g_val = self.g_values[loc[0], loc[1]] + 1
         for state in open_states:
-            loc = get_updated_location(state.direction, self.robot.location)
+            loc = get_updated_location(state.direction,
+                                       self.robot.location)
             # if we haven't been here, record new g value
             # or if g_value is lower!
             if self.robot._map[loc[0], loc[1]] == 0 \
@@ -174,13 +179,29 @@ class AStar(BaseHeuristic):
             for j in range(len(maze)):
                 g_val = self.g_values[i, j]
                 if maze[i, j] == 0 and g_val > 0:
-                    state = self.heuristic(dist([i, j], loc), [i, j])
+                    state = self.heuristic([i, j],
+                                           distance=dist([i, j], loc))
                     open_list.append(state)
+
+        def is_not_dead_end(x):
+            # filter out potential deadends
+            # if all squares around a square have been
+            # explored, we aren't interested.
+            loc = np.array(x.location)
+            values = []
+            for v in DIRECTIONS.values():
+                d = loc + np.array(v)
+                if np.any(d >= len(maze)) or maze[d[0], d[1]] > 0:
+                    values.append(d)
+            return len(values) > 0 
+
+        filt_open_list = list(filter(is_not_dead_end, open_list))
         # return the closest unexplored square
         def best(state):
-            return state.f_value
-            # return float(state.f_value) / 10.0 + state.direction
-        return sorted(open_list, 
+            # return state.f_value
+            return state.f_value / 10.0 + state.distance
+            # return float(state.f_value) / 10.0 + state.distance
+        return sorted(filt_open_list, 
             key=best)[0].location
 
     def get_best_path(self, point_b):
@@ -188,19 +209,20 @@ class AStar(BaseHeuristic):
                                   [0, 0], point_b)
 
 
-class AStarState(object):
+class _AStarState(object):
     """Helper object to wrap a location and its corresponding
     h, g, and f values for A*"""
 
-    def __init__(self, direction, location, h_value, g_value):
+    def __init__(self, direction, distance, location, h_value, g_value):
         self.direction = direction
+        self.distance = distance
         self.location = location
         self.h_value = h_value
         self.g_value = g_value
 
     @property
     def f_value(self):
-        return self.g_value + self.h_value
+        return float(self.g_value + self.h_value)
 
     def __repr__(self):
         return '<State: {}, {}, {}>'.format(

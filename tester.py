@@ -1,6 +1,8 @@
 from __future__ import division
 from maze import Maze
 from robot import Robot
+from showmaze import MazeVis
+from time import sleep
 import sys
 
 # global dictionaries for robot movement and sensing
@@ -17,6 +19,10 @@ dir_reverse = {'u': 'd', 'r': 'l', 'd': 'u', 'l': 'r',
 max_time = 1000
 train_score_mult = 1/30.
 
+# viz parameters
+SLEEP = 0.1
+
+
 if __name__ == '__main__':
     '''
     This script tests a robot based on the code in robot.py on a maze given
@@ -25,6 +31,10 @@ if __name__ == '__main__':
 
     # Create a maze based on input argument on command line.
     testmaze = Maze( str(sys.argv[1]) )
+
+    # initialize visualization
+    viz = MazeVis(testmaze)
+    viz.draw_maze()
 
     # Intitialize a robot; robot receives info about maze dimensions.
     testrobot = Robot(testmaze.dim)
@@ -35,9 +45,14 @@ if __name__ == '__main__':
     for run in range(2):
         print "Starting run {}.".format(run)
 
+        if run == 1:
+            viz.mapping = False
+
         # Set the robot in the start position. Note that robot position
         # parameters are independent of the robot itself.
         robot_pos = {'location': [0, 0], 'heading': 'up'}
+        viz.draw_robot(robot_pos['location'])
+        sleep(SLEEP)
 
         run_active = True
         hit_goal = False
@@ -48,6 +63,7 @@ if __name__ == '__main__':
                 run_active = False
                 print "Allotted time exceeded."
                 break
+
 
             # provide robot with sensor information, get actions
             sensing = [testmaze.dist_to_wall(robot_pos['location'], heading)
@@ -100,9 +116,6 @@ if __name__ == '__main__':
                     else:
                         print "Movement stopped by wall."
                         movement = 0
-            # TODO: remove
-            # if (robot_pos['location'][0] != testrobot.location[1] or
-            # robot_pos['location'][1] != testrobot.location[0]):
 
             # check for goal entered
             goal_bounds = [testmaze.dim/2 - 1, testmaze.dim/2]
@@ -113,7 +126,12 @@ if __name__ == '__main__':
                     run_active = False
                     print "Goal found; run {} completed!".format(run)
 
+            viz.draw_robot(robot_pos['location'])
+            sleep(SLEEP)
+
     # Report score if robot is successful.
     if len(runtimes) == 2:
         print "Task complete! Score: {:4.3f}".format(runtimes[1] + train_score_mult*runtimes[0])
-    
+        print "Run 1 steps: {}".format(runtimes[1])
+
+    viz.end()
