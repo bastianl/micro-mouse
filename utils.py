@@ -13,11 +13,12 @@ rotations = {'up': 0, 'right': 1, 'down': 2, 'left': 3}
 
 def path_to_point(maze, point_a, point_b):
     """Given a partial map, return the set of legal moves
-    that would result getting from one point to another.
+    that would result in a path from one point to another.
     Uses the expansion grid method.
     Note: while this is a similar implementation to our A*
-    mapping method, it is quite different because the robot
-    can only expand on place at a time.
+    mapping method, it is different in that the robot
+    can only expand one location at a time. Here we expand
+    all adjacent explored squares in the maze.
     Note: Path does not return point_a, but it does return point_b as
     first point. Get the next point by calling path.pop(), or path[-1]."""
     maze = maze.copy()

@@ -87,6 +87,8 @@ class AStar(BaseHeuristic):
         BaseHeuristic.__init__(self, *args, **kwds)
         # Astar uses lowest val
         self.g_values = self.robot._map.copy()
+        self.TURN_PENALTY = 2
+        self.reverse = False
         self.reset = {}
 
     def get_move(self, open_states):
@@ -97,6 +99,7 @@ class AStar(BaseHeuristic):
             states.append(self.heuristic(loc, direction=st[0]))
 
         robot = self.robot
+        open_states = states
         # remove moves we have already been to in open states
         def not_explored(state):
             loc = state.location
@@ -139,7 +142,7 @@ class AStar(BaseHeuristic):
                 logging.debug("Best heuristic out of {} choices: {}".format(
                     len(states), heuristic))
                 # some heuristics keep track of state
-                self.record_move(direction, states)
+                self.record_move(direction, open_states)
 
         self.reset = reset
 
@@ -150,9 +153,12 @@ class AStar(BaseHeuristic):
         dim = self.robot.maze_dim
         [x, y] = loc
         # to account for the 2x2 goal in the center
-        x_dim = dim // 2 - 1 if x < dim // 2 else dim //2
-        y_dim = dim // 2 - 1 if y < dim // 2 else dim //2
-        h_value = dist([x, y], [x_dim, y_dim])
+        x_dim = dim // 2 - 1 if x < dim // 2 else dim // 2
+        y_dim = dim // 2 - 1 if y < dim // 2 else dim // 2
+        if self.reverse:
+            h_value = dist([x, y], [0, 0])
+        else:
+            h_value = dist([x, y], [x_dim, y_dim])
         g_value = self.g_values[loc[0], loc[1]]
         return _AStarState(direction=direction,
                            distance=distance,
@@ -162,15 +168,24 @@ class AStar(BaseHeuristic):
 
     def record_move(self, move, open_states):
         # A* expansion step: record g-values
-        loc = self.robot.location
-        g_val = self.g_values[loc[0], loc[1]] + 1
+        robot_loc = self.robot.location
         for state in open_states:
+            g_val = self.g_values[robot_loc[0], robot_loc[1]] + 1
             loc = get_updated_location(state.direction,
                                        self.robot.location)
+            if state.direction != self.robot.heading:
+                # TODO: incorperate turn penalty!
+                # g_val += self.TURN_PENALTY
+                pass
+
+            if g_val <= self.g_values[loc[0], loc[1]]:
+                # TODO: this means we need to update
+                # and backpropagate g-values
+                pass
+
             # if we haven't been here, record new g value
             # or if g_value is lower!
-            if self.robot._map[loc[0], loc[1]] == 0 \
-                    or g_val <= self.g_values[loc[0], loc[1]]:
+            if self.robot._map[loc[0], loc[1]] == 0:
                 self.g_values[loc[0], loc[1]] = g_val
 
     def best_unexplored_square(self):
@@ -222,21 +237,24 @@ class AStar(BaseHeuristic):
 
             return False
 
-        filt_open_list = list(filter(is_cut_off, open_list))
+        if not self.reverse:
+            open_list = list(filter(is_cut_off, open_list))
 
         # return the closest unexplored square
         def best(state):
             # return state.f_value
             # return state.f_value / 10.0 + state.distance
-            return state.f_value / 10.0 + state.distance
+            return state.f_value / 15.0 + state.distance
 
             # return float(state.f_value) / 10.0 + state.distance
-        return sorted(filt_open_list, 
-            key=best)[0].location
+        return sorted(open_list, key=best)[0].location
 
     def get_best_path(self, point_b):
         return path_from_g_values(self.robot._map, self.g_values, 
                                   [0, 0], point_b)
+
+    def reverse_heuristic(self):
+        self.reverse = True
 
 
 class _AStarState(object):

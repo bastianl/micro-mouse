@@ -64,7 +64,7 @@ class MazeVis(object):
 
 
     def draw_robot(self, location):
-        self.wally.clearstamps()
+        # self.wally.clearstamps()
         origin = self.origin
         sq_size = self.sq_size
         [x, y] = location

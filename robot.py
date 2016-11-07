@@ -36,6 +36,7 @@ class Robot(object):
         self._map = np.zeros([maze_dim, maze_dim], dtype='int64')
         # are we in mapping mode?
         self.mapping = True
+        self.reached_goal = False
         # is the previous square open?
         self.prev_open = 0
         # heuristic function we use to weight possible moves in mapping
@@ -82,12 +83,16 @@ class Robot(object):
             # adjust the state based on heading direction
             global_state = rol(ifb(N, E, S, W), rotations[self.heading])
 
-        if self.mapping and not state:
-            self.record_state(self.location, global_state)
 
         if self.mapping:
+            if not state:
+                self.record_state(self.location, global_state)
             if in_goal(self.location, self.maze_dim):
+                self.reached_goal = True
                 self.goal_location = self.location
+                self.heuristic.reverse_heuristic()
+
+            if self.reached_goal and self.done_exploring():
                 self.location = [0, 0]
                 self.heading = 'up'
                 self.mapping = False
@@ -101,6 +106,7 @@ class Robot(object):
             direction = direction_to_square(target, self.location)
             rotation = rotation_from_direction(self.heading, direction)
             movement = 1
+            # move more squares, if possible
             while len(path) > 0 and direction_to_square(path[-1], target) == direction \
                     and movement < 3:
                 target = path.pop()
@@ -110,8 +116,6 @@ class Robot(object):
 
         self.update_location(rotation, movement)
 
-        # if self._map[self.location[0], self.location[1]] == 0:
-        # logging.debug("new location!")
         self.moves.append([old_loc, self.location, rotation, movement])
 
         return rotation, movement
@@ -166,3 +170,10 @@ class Robot(object):
 
         logging.debug("Moving: {} Rotating: {}. New Location: {}. Heading {}".format(
             movement, rotation, self.location, self.heading))
+
+
+    def done_exploring(self):
+        sq = self.maze_dim ** 2
+        ratio = (self._map > 0).sum() / sq
+        import ipdb; ipdb.set_trace()
+        return ratio >= 0.6 or self.step >= sq
