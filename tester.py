@@ -4,6 +4,8 @@ from robot import Robot
 from showmaze import MazeVis
 from time import sleep
 import sys
+import logging
+logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 
 # global dictionaries for robot movement and sensing
 dir_sensors = {'u': ['l', 'u', 'r'], 'r': ['u', 'r', 'd'],

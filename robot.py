@@ -5,16 +5,16 @@ import logging
 import numpy as np
 
 from utils import DIRECTIONS, rotations
-from utils import ifb, bfi, rol
 from utils import get_updated_location
 from utils import is_prev_open
 from utils import rotation_from_direction
 from utils import direction_from_rotation
 from utils import direction_to_square
 from utils import in_goal
+from utils import rotate
+from utils import State, Map
 
 from heuristics import Random, AStar
-
 
 class Robot(object):
 
@@ -33,7 +33,7 @@ class Robot(object):
         # the robots goal in the mapping stage is to
         # fill every 0 in the map with a value describing
         # the walls on each of the 4 sides of the square.
-        self._map = np.zeros([maze_dim, maze_dim], dtype='int64')
+        self.map = Map(maze_dim)
         # are we in mapping mode?
         self.mapping = True
         self.reached_goal = False
@@ -74,19 +74,11 @@ class Robot(object):
         rotation = 0
         movement = 0
 
-        state = self._map[self.location[0], self.location[1]]
-        if state != 0:
-            global_state = state
-        else:
-            S = self.prev_open
-            W, N, E = np.array(sensors) > 0
-            # adjust the state based on heading direction
-            global_state = rol(ifb(N, E, S, W), rotations[self.heading])
-
+        state = State(self.location, self.heading, sensors, self.prev_open)
 
         if self.mapping:
-            if not state:
-                self.record_state(self.location, global_state)
+            if not self.map(state.location):
+                self.record_state(state)
             if in_goal(self.location, self.maze_dim):
                 self.reached_goal = True
                 self.goal_location = self.location
@@ -97,9 +89,10 @@ class Robot(object):
                 self.heading = 'up'
                 self.mapping = False
                 self.path_to_goal = self.heuristic.get_best_path(self.goal_location)
+                self.path_to_goal.pop()
                 return "Reset", "Reset"
 
-            rotation, movement = self.get_next_mapping_move(bfi(global_state))
+            rotation, movement = self.get_next_mapping_move(state)
         else: 
             path = self.path_to_goal
             target = path.pop()
@@ -120,29 +113,21 @@ class Robot(object):
 
         return rotation, movement
 
-    def record_state(self, location, state):
+    def record_state(self, state):
         """Record the state at a given location."""
-        assert isinstance(state, int)
-        loc = list(location)
-
-        # loc[0] = (self.maze_dim - 1) - loc[0]
-        if self._map[loc[0], loc[1]] == 0:
+        if self.map(state.location) == 0:
             # only update state if we haven't been there!
             # this allows us to turn freely
-            logging.debug("Recording state for {}: {}".format(loc, state))
-            self._map[loc[0], loc[1]] = state
+            logging.debug("Recording state for {}: {}".format(state.location, state.state))
+            self.map.set(state.location, state.state)
 
-    def get_next_mapping_move(self, global_state):
-        open_states = []
-        for direction, state in zip(DIRECTIONS.keys(), global_state):
-            if state > 0:
-                open_states.append([direction])
 
+    def get_next_mapping_move(self, state):
         movement = 1
 
         # always call the heuristic function!
         # some heuristics (A*) need to keep track of state
-        direction = self.heuristic.get_move(open_states)
+        direction = self.heuristic.get_move(state)
 
         rotation = rotation_from_direction(self.heading, direction)
 
@@ -153,7 +138,7 @@ class Robot(object):
 
         # calculate whether the next position will be open
         # get the next location given direction, and movement
-        current = self._map[self.location[0], self.location[1]]
+        current = self.map(self.location)
         self.prev_open = is_prev_open(current, rotation, movement, self.heading)
         logging.debug("Prev open: {}".format(self.prev_open))
 
@@ -174,6 +159,4 @@ class Robot(object):
 
     def done_exploring(self):
         sq = self.maze_dim ** 2
-        ratio = (self._map > 0).sum() / sq
-        import ipdb; ipdb.set_trace()
-        return ratio >= 0.6 or self.step >= sq
+        return self.map.ratio() >= 0.6 or self.step >= sq

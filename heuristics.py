@@ -8,13 +8,14 @@ import numpy as np
 
 from utils import DIRECTIONS
 from utils import get_updated_location
-from utils import bfi, dist
+from utils import dist
 from utils import direction_to_square
 from utils import path_to_point
 from utils import direction_from_rotation
 from utils import rotation_from_direction
 from utils import path_from_g_values
 from utils import in_goal
+from utils import Map
 
 
 class BaseHeuristic(object):
@@ -28,7 +29,7 @@ class BaseHeuristic(object):
     def get_move(self, open_states):
         robot = self.robot
         for st in open_states:
-            loc = get_updated_location(st[0], robot.location)
+            loc = get_updated_location(st, robot.location)
             try:
                 heuristic = self.heuristic(loc)
             except IndexError as e:
@@ -76,7 +77,7 @@ class Random(BaseHeuristic):
         has not yet been explored."""
         # prefer unexplored states
         num_states = len(open_states)
-        maze = self.robot._map
+        maze = self.robot.map
         mult = self.weight * (maze[loc[0], loc[1]] == 0) + 1
         return random() / num_states * (mult)
 
@@ -85,25 +86,26 @@ class AStar(BaseHeuristic):
 
     def __init__(self, *args, **kwds):
         BaseHeuristic.__init__(self, *args, **kwds)
-        # Astar uses lowest val
-        self.g_values = self.robot._map.copy()
+        # g-values for A*
+        self.g_values = Map(self.robot.maze_dim)
+        self.g_values.set([0, 0], 1)
+        # parameters used later in simulation
+        self.reset = {}
         self.TURN_PENALTY = 2
         self.reverse = False
-        self.reset = {}
 
-    def get_move(self, open_states):
+    def get_move(self, state):
         robot = self.robot
         states = []
-        for st in open_states:
-            loc = get_updated_location(st[0], robot.location)
-            states.append(self.heuristic(loc, direction=st[0]))
+        for st in state.open_squares:
+            loc = get_updated_location(st, robot.location)
+            states.append(self.heuristic(loc, direction=st))
 
         robot = self.robot
-        open_states = states
         # remove moves we have already been to in open states
         def not_explored(state):
             loc = state.location
-            return robot._map[loc[0], loc[1]] == 0
+            return robot.map(loc) == 0
 
         states = list(filter(not_explored, states))
 
@@ -117,7 +119,7 @@ class AStar(BaseHeuristic):
             # no unexplored squares.
             next_square = self.best_unexplored_square()
             logging.debug("Stuck, reseting to {}".format(next_square))
-            path = path_to_point(robot._map, robot.location, next_square)
+            path = path_to_point(robot.map, robot.location, next_square)
             reset = dict(path=path)
 
         if reset and len(reset['path']) == 0:
@@ -142,7 +144,7 @@ class AStar(BaseHeuristic):
                 logging.debug("Best heuristic out of {} choices: {}".format(
                     len(states), heuristic))
                 # some heuristics keep track of state
-                self.record_move(direction, open_states)
+                self.record_move(direction, state)
 
         self.reset = reset
 
@@ -159,44 +161,52 @@ class AStar(BaseHeuristic):
             h_value = dist([x, y], [0, 0])
         else:
             h_value = dist([x, y], [x_dim, y_dim])
-        g_value = self.g_values[loc[0], loc[1]]
+        g_value = self.g_values(loc)
         return _AStarState(direction=direction,
                            distance=distance,
                            location=loc, 
                            g_value=g_value, 
                            h_value=h_value)
 
-    def record_move(self, move, open_states):
+    def record_move(self, move, state):
         # A* expansion step: record g-values
-        robot_loc = self.robot.location
-        for state in open_states:
-            g_val = self.g_values[robot_loc[0], robot_loc[1]] + 1
-            loc = get_updated_location(state.direction,
-                                       self.robot.location)
-            if state.direction != self.robot.heading:
-                # TODO: incorperate turn penalty!
-                # g_val += self.TURN_PENALTY
-                pass
+        assert move in state.open_squares
+        loc = self.robot.location
+        for square in state.visible_squares:
+            g_val = self.g_values(loc) + dist(loc, square)
+            # TODO: incorperate turn penalty!
 
-            if g_val <= self.g_values[loc[0], loc[1]]:
-                # TODO: this means we need to update
-                # and backpropagate g-values
-                pass
+            if self.g_values(square) == 0:
+                self.g_values.set(square, g_val)
 
-            # if we haven't been here, record new g value
-            # or if g_value is lower!
-            if self.robot._map[loc[0], loc[1]] == 0:
-                self.g_values[loc[0], loc[1]] = g_val
+            if g_val < self.g_values(square):
+                # backpropagate g-values
+                # we have found a more efficient route to a square
+                open_squares = [[square, g_val]]
+                while True:
+                    # TODO: this might be broken..
+                    for square, g_val in open_squares:
+                        self.g_values.set(square, g_val)
+                    g_val += 1
+                    open_squares = []
+                    for idx, state in enumerate(self.robot.map.bit(square)):
+                        # get new_location
+                        new_loc = get_updated_location(DIRECTIONS.keys()[idx], square)
+                        if state > 0 and self.g_values(new_loc) > (g_val):
+                            open_squares.append([new_loc, g_val])
+                    if len(open_squares) == 0:
+                        break
 
     def best_unexplored_square(self):
-        dim = self.robot.maze_dim
-        maze = self.robot._map
+        maze = self.robot.map
         loc = self.robot.location
         open_list = []
-        for i in range(len(maze)):
-            for j in range(len(maze)):
-                g_val = self.g_values[i, j]
-                if maze[i, j] == 0 and g_val > 0:
+        for i in range(maze.dim):
+            for j in range(maze.dim):
+                g_val = self.g_values([i, j])
+                # TODO: can only select squares that
+                # we also know how to get to...
+                if maze([i, j]) == 0 and g_val > 0:
                     state = self.heuristic([i, j],
                                            distance=dist([i, j], loc))
                     open_list.append(state)
@@ -207,7 +217,7 @@ class AStar(BaseHeuristic):
                 d = loc + np.array(v)
                 # criterium for a closed direction, or
                 # a space we have already visited.
-                if np.any(d >= len(maze)) or maze[d[0], d[1]] > 0:
+                if np.any(d >= dim) or maze(d) > 0:
                     values.append(d)
             return values
 
@@ -224,14 +234,14 @@ class AStar(BaseHeuristic):
                 loc = open_list.pop()
                 closed_list.append(loc)
 
-                if in_goal(loc, dim):
+                if in_goal(loc, maze.dim):
                     return True
 
                 for v in DIRECTIONS.values():
                     d = loc + np.array(v)
                     # criterium for a closed direction, or
                     # a space we have already visited.
-                    if np.all(d > 0) and np.all(d < len(maze)) and maze[d[0], d[1]] == 0 \
+                    if np.all(d > 0) and np.all(d < maze.dim) and maze(d) == 0 \
                             and not any(dist(d, z) == 0 for z in closed_list):
                         open_list.append(d)
 
@@ -247,10 +257,26 @@ class AStar(BaseHeuristic):
             return state.f_value / 15.0 + state.distance
 
             # return float(state.f_value) / 10.0 + state.distance
-        return sorted(open_list, key=best)[0].location
+        square = sorted(open_list, key=best)[0]
+        loc = square.location
+        g_val = self.g_values(loc)
+        # backtrack to the last known place we saw
+        # this square from..
+        while maze(loc) == 0:
+            for val in DIRECTIONS.values():
+                new_loc = loc + val
+                if np.any(new_loc >= maze.dim):
+                    continue
+                new_g = self.g_values(new_loc)
+                if g_val == (new_g + 1):
+                    loc = new_loc
+                    g_val = new_g
+                    break
+
+        return loc
 
     def get_best_path(self, point_b):
-        return path_from_g_values(self.robot._map, self.g_values, 
+        return path_from_g_values(self.robot.map.data(), self.g_values.data(), 
                                   [0, 0], point_b)
 
     def reverse_heuristic(self):
@@ -264,13 +290,17 @@ class _AStarState(object):
     def __init__(self, direction, distance, location, h_value, g_value):
         self.direction = direction
         self.distance = distance
-        self.location = location
+        self._loc = location
         self.h_value = h_value
         self.g_value = g_value
 
     @property
     def f_value(self):
         return float(self.g_value + self.h_value)
+
+    @property
+    def location(self):
+        return np.array(self._loc)
 
     def __repr__(self):
         return '<State: {}, {}, {}>'.format(

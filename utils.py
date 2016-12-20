@@ -4,12 +4,82 @@ import numpy as np
 
 # rotation map to record sensor data.
 DIRECTIONS = OrderedDict([
-    ('up', [1, 0]),
-    ('right', [0, 1]),
-    ('down', [-1, 0]),
-    ('left', [0, -1]),
+    ('up', np.array([1, 0])),
+    ('right', np.array([0, 1])),
+    ('down', np.array([-1, 0])),
+    ('left', np.array([0, -1])),
 ])
 rotations = {'up': 0, 'right': 1, 'down': 2, 'left': 3}
+
+
+class State(object):
+    """State container object for the robot. Stores information
+    on where the robot currently is, and what it senses."""
+
+    def __init__(self, location, heading, sensors, prev_open):
+        S = prev_open
+        W, N, E = sensors
+        # adjust the sensors based on the heading direction
+        sensors = rotate([N, E, S, W], rotations[heading])
+        self.sensors = sensors
+        self._loc = location
+
+    @property
+    def state(self):
+        return ifb(*list(np.int64(np.array(self.sensors) > 0)))
+
+    @property
+    def location(self):
+        return np.array(self._loc)
+
+    @property
+    def open_squares(self):
+        open_states = []
+        for direction, state in zip(DIRECTIONS.keys(), self.sensors):
+            if state > 0:
+                open_states.append(direction)
+        return open_states
+
+    @property
+    def visible_squares(self):
+        """Use the sensor data to calculate visible squares"""
+        visible = []
+        for idx, val in enumerate(self.sensors):
+            direction = DIRECTIONS.values()[idx]
+            while val > 0:
+                visible.append(self.location + direction * val)
+                val -= 1
+        return visible
+
+    def __repr__(self):
+        return '<Location {} - seeing: {}>'.format(self.location, self.sensors)
+
+
+class Map(object):
+
+    def __init__(self, dim):
+        self.dim = dim
+        self._data = np.zeros([dim, dim], dtype='int64')
+
+    def __call__(self, location):
+        return self._data[location[0], location[1]]
+
+    def bit(self, loc):
+        return bfi(self(loc))
+
+    def set(self, location, state):
+        assert isinstance(state, int)
+        self._data[location[0], location[1]] = state
+
+    def ratio(self):
+        return (self._data > 0).sum() / float(self.dim ** 2)
+
+    def data(self):
+        return self._data.copy()
+
+    def __repr__(self):
+        return str(self._data)
+
 
 def path_to_point(maze, point_a, point_b):
     """Given a partial map, return the set of legal moves
@@ -21,15 +91,11 @@ def path_to_point(maze, point_a, point_b):
     all adjacent explored squares in the maze.
     Note: Path does not return point_a, but it does return point_b as
     first point. Get the next point by calling path.pop(), or path[-1]."""
-    maze = maze.copy()
+    maze = maze._data.copy()
     def not_in(loc, square_list):
         return all([dist(loc, x[0]) > 0 for x in square_list])
     dim = len(maze)
     g_values = np.zeros([dim, dim], dtype='int64')
-    heuristics = maze.copy()
-    for i in range(dim):
-        for j in range(dim):
-            heuristics[i,j] = dist([i, j], point_b)
     target = [point_a]
     closed_squares = []
     open_squares = []
@@ -44,7 +110,7 @@ def path_to_point(maze, point_a, point_b):
                 loc = get_updated_location(DIRECTIONS.keys()[idx], target[0])
                 if not_in(loc, open_squares) and not_in(loc, closed_squares) \
                         and maze[loc[0], loc[1]] > 0:
-                    h = heuristics[loc[0], loc[1]]
+                    h = dist(loc, point_b) # heuristic function
                     f = g_value + h
                     open_squares.append([loc, f, h, g_value])
                     g_values[loc[0], loc[1]] = g_value
@@ -58,25 +124,19 @@ def path_to_point(maze, point_a, point_b):
             idx = DIRECTIONS.keys().index(direction)
             loc = target[0]
             reachable = bfi(maze[loc[0], loc[1]])[idx]
-    # last location will still be set from distance block above
-    g_values[point_b[0], point_b[1]] = g_value + 1
-    # instead of this path "hack", we could also modify the state of the 
-    # map copy to be accurate in terms of what squares the last point
-    # can be accessed from, so the below algo works correctly.
-    path = [point_b, loc]
 
-    return path_from_g_values(maze, g_values, point_a, point_b, path=path)
+    return path_from_g_values(maze, g_values, point_a, point_b)
 
 
-def path_from_g_values(maze, g_values, point_a, point_b, path=None):
-    path = path or [point_b]
+def path_from_g_values(maze, g_values, point_a, point_b):
+    path = [point_b]
 
     while True:
         loc = path[-1]
         if g_values[loc[0], loc[1]] == 1:
             # we are within 1 square, so break
             # Don't append point_a. This is not useful for the robot,
-            # as they are typically on that square.
+            # as it typically starts on that square.
             break
         states = bfi(maze[loc[0], loc[1]])
         open_squares = []
@@ -115,7 +175,7 @@ def is_prev_open(current, rotation, movement, heading):
 def direction_to_square(to, cur):
     assert dist(to, cur) == 1
     direction = [to[0] - cur[0], to[1] - cur[1]] 
-    keys = [ key for key, value in DIRECTIONS.iteritems() if value == direction ]
+    keys = [ key for key, value in DIRECTIONS.iteritems() if np.all(value == direction) ]
     return keys[0]
 
 
@@ -147,6 +207,11 @@ def get_updated_location(direction, location, movement=1):
 
 def dist(a, b):
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+
+def rotate(l, n):
+    """Rotate a list"""
+    return l[-n:] + l[:-n]
 
 
 def ifb(N, E, S, W):
